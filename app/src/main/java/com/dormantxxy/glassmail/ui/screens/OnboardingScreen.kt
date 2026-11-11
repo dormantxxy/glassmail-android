@@ -46,7 +46,7 @@ fun OnboardingScreen(viewModel: AppViewModel, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun WelcomeToMail(modifier: Modifier, onProvider: (MailProvider) -> Unit) {
+private fun WelcomeToMail(modifier: Modifier, onBack: (() -> Unit)? = null, onProvider: (MailProvider) -> Unit) {
     val choices = listOf(
         MailProvider.ICLOUD to "iCloud",
         MailProvider.OUTLOOK to "Microsoft Exchange / Outlook",
@@ -60,7 +60,14 @@ private fun WelcomeToMail(modifier: Modifier, onProvider: (MailProvider) -> Unit
         modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).statusBarsPadding().navigationBarsPadding(),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Spacer(Modifier.height(54.dp))
+        if (onBack != null) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 7.dp)) {
+                LiquidCircleButton(Icons.Rounded.ChevronLeft, "返回", onBack)
+            }
+            Spacer(Modifier.height(12.dp))
+        } else {
+            Spacer(Modifier.height(54.dp))
+        }
         Box(Modifier.size(78.dp).clip(RoundedCornerShape(18.dp)).background(IOSBlue), contentAlignment = Alignment.Center) {
             Icon(Icons.Rounded.Mail, null, Modifier.size(48.dp), tint = Color.White)
         }
@@ -113,7 +120,7 @@ fun AccountSetupScreen(
     val busy by viewModel.setupBusy.collectAsState()
     var provider by rememberSaveable { mutableStateOf(initialProvider) }
     if (provider == null) {
-        WelcomeToMail(Modifier) { provider = it }
+        WelcomeToMail(Modifier, onBack = onBack) { provider = it }
         return
     }
     AccountForm(

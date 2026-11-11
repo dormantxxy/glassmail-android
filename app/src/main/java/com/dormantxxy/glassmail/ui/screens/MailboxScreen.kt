@@ -46,6 +46,8 @@ fun MailboxScreen(
     val sync by viewModel.syncState.collectAsState()
     var showMailboxes by rememberSaveable { mutableStateOf(false) }
     var showOptions by remember { mutableStateOf(false) }
+    var showFilter by remember { mutableStateOf(false) }
+    var activeFilter by rememberSaveable { mutableStateOf(MailFilter.ALL) }
     var selectedIds by remember { mutableStateOf(setOf<String>()) }
     var selecting by remember { mutableStateOf(false) }
     var digestSender by remember { mutableStateOf<String?>(null) }
@@ -60,6 +62,7 @@ fun MailboxScreen(
             onInbox = { accountId -> viewModel.selectAccount(accountId); viewModel.showInbox(); showMailboxes = false },
             onMailbox = { box -> viewModel.selectAccount(box.accountId); viewModel.selectMailbox(box); showMailboxes = false },
             onSmart = { kind -> viewModel.selectSmart(kind); showMailboxes = false },
+            onFilter = { filter -> activeFilter = filter; viewModel.showInbox(); showMailboxes = false },
             onAddAccount = onAddAccount,
             onManageAccounts = onSettings,
             onDone = { showMailboxes = false },
@@ -81,7 +84,15 @@ fun MailboxScreen(
     }
 
     val selectionMode = selecting || selectedIds.isNotEmpty()
-    val categoryOrder = listOf(MailCategory.PRIMARY, MailCategory.TRANSACTIONS, MailCategory.UPDATES, MailCategory.PROMOTIONS)
+    val categoryOrder: List<MailCategory?> = listOf(MailCategory.PRIMARY, MailCategory.TRANSACTIONS, MailCategory.UPDATES, MailCategory.PROMOTIONS, null)
+    val visibleMessages = remember(list.messages, activeFilter) {
+        when (activeFilter) {
+            MailFilter.ALL -> list.messages
+            MailFilter.UNREAD -> list.messages.filter { !it.isRead }
+            MailFilter.FLAGGED -> list.messages.filter { it.isStarred }
+            MailFilter.ATTACHMENTS -> list.messages.filter { it.hasAttachments }
+        }
+    }
 
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         PullToRefreshBox(
@@ -117,24 +128,24 @@ fun MailboxScreen(
                         onMore = { showOptions = true }
                     )
                     IOSLargeTitle(
-                        title = list.title,
+                        title = if (list.selectedMailbox == null && list.smartKind == null && list.selectedCategory == null) "所有邮件" else list.title,
                         subtitle = "${accountSubtitle(accounts, selectedAccount)} · ${if (sync is SyncState.Running) "正在更新…" else "刚刚更新"}",
                         modifier = Modifier.padding(top = 8.dp, bottom = 6.dp)
                     )
                     if (preferences.categoriesEnabled && list.selectedMailbox == null && list.smartKind == null) {
-                        IOSCategoryTabs(list.selectedCategory ?: MailCategory.PRIMARY, list.messages) { viewModel.selectCategory(it) }
+                        IOSCategoryTabs(list.selectedCategory, visibleMessages) { viewModel.selectCategory(it) }
                     }
                 }
 
                 when {
-                    list.loading && list.messages.isEmpty() -> item {
+                    list.loading && visibleMessages.isEmpty() -> item {
                         Box(Modifier.fillParentMaxHeight(.72f), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp) }
                     }
-                    list.messages.isEmpty() -> item {
+                    visibleMessages.isEmpty() -> item {
                         EmptyPane("无邮件", "下拉以检查新邮件", Modifier.fillParentMaxHeight(.72f), actionLabel = "检查邮件", onAction = viewModel::refresh)
                     }
                     preferences.categoriesEnabled && list.selectedCategory != null && list.selectedCategory != MailCategory.PRIMARY -> {
-                        val groups = list.messages.groupBy { it.from.address }.values
+                        val groups = visibleMessages.groupBy { it.from.address }.values
                             .sortedByDescending { group -> group.maxOfOrNull(MailMessage::receivedAt) ?: 0L }
                         item { MessageSectionHeader("新邮件") }
                         items(groups, key = { it.first().from.address }) { group ->
@@ -143,7 +154,7 @@ fun MailboxScreen(
                         }
                     }
                     else -> {
-                        val (newMail, older) = splitMessages(list.messages)
+                        val (newMail, older) = splitMessages(visibleMessages)
                         if (newMail.isNotEmpty()) {
                             item { MessageSectionHeader("新邮件") }
                             items(newMail, key = { it.id }) { message ->
@@ -185,22 +196,23 @@ fun MailboxScreen(
             SelectionToolbar(
                 Modifier.align(Alignment.BottomCenter),
                 onRead = {
-                    list.messages.filter { it.id in selectedIds }.forEach(viewModel::toggleRead)
+                    visibleMessages.filter { it.id in selectedIds }.forEach(viewModel::toggleRead)
                     selectedIds = emptySet(); selecting = false
                 },
                 onArchive = {
-                    list.messages.filter { it.id in selectedIds }.forEach(viewModel::archive)
+                    visibleMessages.filter { it.id in selectedIds }.forEach(viewModel::archive)
                     selectedIds = emptySet(); selecting = false
                 },
                 onTrash = {
-                    list.messages.filter { it.id in selectedIds }.forEach(viewModel::trash)
+                    visibleMessages.filter { it.id in selectedIds }.forEach(viewModel::trash)
                     selectedIds = emptySet(); selecting = false
                 }
             )
         } else {
             InboxBottomBar(
-                unread = list.messages.count { !it.isRead },
-                onFilter = { viewModel.selectSmart(MailboxKind.STARRED) },
+                unread = visibleMessages.count { !it.isRead },
+                filterActive = activeFilter != MailFilter.ALL,
+                onFilter = { showFilter = true },
                 onCompose = { viewModel.startNewMessage(); onCompose() },
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
@@ -213,8 +225,16 @@ fun MailboxScreen(
             compact = preferences.compactRows,
             onCategories = { viewModel.setCategories(it) },
             onCompact = { viewModel.setCompactRows(it) },
+            onAllMail = { viewModel.selectCategory(null) },
             onSearch = { showOptions = false; onSearch() },
             onDismiss = { showOptions = false }
+        )
+    }
+    if (showFilter) {
+        MailFilterSheet(
+            selected = activeFilter,
+            onSelect = { activeFilter = it; showFilter = false },
+            onDismiss = { showFilter = false }
         )
     }
 }
@@ -243,7 +263,7 @@ private fun InboxControls(
 }
 
 @Composable
-private fun IOSCategoryTabs(selected: MailCategory, messages: List<MailMessage>, onSelect: (MailCategory) -> Unit) {
+private fun IOSCategoryTabs(selected: MailCategory?, messages: List<MailMessage>, onSelect: (MailCategory) -> Unit) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
         MailCategory.entries.forEach { category ->
             CategoryPill(category.label, selected == category, messages.count { !it.isRead && it.category == category }) { onSelect(category) }
@@ -347,12 +367,12 @@ private fun SenderDigestRow(messages: List<MailMessage>, onClick: () -> Unit) {
 }
 
 @Composable
-private fun InboxBottomBar(unread: Int, onFilter: () -> Unit, onCompose: () -> Unit, modifier: Modifier = Modifier) {
+private fun InboxBottomBar(unread: Int, filterActive: Boolean, onFilter: () -> Unit, onCompose: () -> Unit, modifier: Modifier = Modifier) {
     Row(
         modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        LiquidCircleButton(Icons.Rounded.FilterList, "过滤", onFilter, tint = IOSBlue)
+        LiquidCircleButton(Icons.Rounded.FilterList, "过滤", onFilter, tint = if (filterActive) IOSBlue else MaterialTheme.colorScheme.onSurface)
         Text(
             if (unread == 0) "无未读邮件" else "$unread 封未读",
             Modifier.weight(1f),
@@ -386,6 +406,7 @@ private fun MailboxesPane(
     onInbox: (String) -> Unit,
     onMailbox: (Mailbox) -> Unit,
     onSmart: (MailboxKind) -> Unit,
+    onFilter: (MailFilter) -> Unit,
     onAddAccount: () -> Unit,
     onManageAccounts: () -> Unit,
     onDone: () -> Unit,
@@ -417,13 +438,13 @@ private fun MailboxesPane(
             MailboxGroup {
                 MailboxRow(Icons.Rounded.AllInbox, IOSBlue, "所有收件箱", mailboxes.filter { it.kind == MailboxKind.INBOX }.sumOf { it.unreadCount }, selectedAccountId.isBlank()) { onInbox("") }
                 GroupLine()
-                MailboxRow(Icons.Rounded.MarkEmailUnread, IOSBlue, "未读", mailboxes.sumOf { it.unreadCount }) { onInbox("") }
+                MailboxRow(Icons.Rounded.MarkEmailUnread, IOSBlue, "未读", mailboxes.sumOf { it.unreadCount }) { onFilter(MailFilter.UNREAD) }
                 GroupLine()
                 MailboxRow(Icons.Rounded.Star, IOSOrange, "VIP", 0) { onSmart(MailboxKind.VIP) }
                 GroupLine()
                 MailboxRow(Icons.Rounded.Flag, IOSOrange, "有旗标", 0) { onSmart(MailboxKind.STARRED) }
                 GroupLine()
-                MailboxRow(Icons.Rounded.AttachFile, Color(0xFF8E8E93), "附件", 0) { onSmart(MailboxKind.ALL) }
+                MailboxRow(Icons.Rounded.AttachFile, Color(0xFF8E8E93), "附件", 0) { onFilter(MailFilter.ATTACHMENTS) }
             }
         }
         items(accounts, key = { it.id }) { account ->
@@ -494,6 +515,29 @@ private fun SenderDigestPane(messages: List<MailMessage>, compact: Boolean, onBa
     }
 }
 
+private enum class MailFilter { ALL, UNREAD, FLAGGED, ATTACHMENTS }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MailFilterSheet(selected: MailFilter, onSelect: (MailFilter) -> Unit, onDismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surfaceVariant) {
+        Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 28.dp)) {
+            Text("过滤", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(8.dp))
+            MailboxGroup {
+                listOf(
+                    MailFilter.ALL to "所有邮件",
+                    MailFilter.UNREAD to "未读",
+                    MailFilter.FLAGGED to "有旗标",
+                    MailFilter.ATTACHMENTS to "含附件"
+                ).forEachIndexed { index, (filter, label) ->
+                    SheetChoice(label, selected == filter) { onSelect(filter) }
+                    if (index != 3) GroupLine()
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ViewOptionsSheet(
@@ -501,6 +545,7 @@ private fun ViewOptionsSheet(
     compact: Boolean,
     onCategories: (Boolean) -> Unit,
     onCompact: (Boolean) -> Unit,
+    onAllMail: () -> Unit,
     onSearch: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -515,7 +560,11 @@ private fun ViewOptionsSheet(
                 SheetChoice("两行预览", !compact) { onCompact(false); onDismiss() }
                 GroupLine(); SheetChoice("紧凑预览", compact) { onCompact(true); onDismiss() }
             }
-            MailboxGroup { MailboxActionRow(Icons.Rounded.Search, "搜索", onSearch) }
+            MailboxGroup {
+                MailboxActionRow(Icons.Rounded.AllInbox, "所有邮件") { onAllMail(); onDismiss() }
+                GroupLine()
+                MailboxActionRow(Icons.Rounded.Search, "搜索", onSearch)
+            }
         }
     }
 }

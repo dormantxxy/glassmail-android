@@ -71,18 +71,18 @@ jobs:
           test -s "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
           mkdir -p dist
-          cp "$APK" dist/GlassMail-1.0.0.apk
-          sha256sum dist/GlassMail-1.0.0.apk > dist/GlassMail-1.0.0.apk.sha256
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging dist/GlassMail-1.0.0.apk | head -12
+          cp "$APK" dist/GlassMail-1.1.0.apk
+          sha256sum dist/GlassMail-1.1.0.apk > dist/GlassMail-1.1.0.apk.sha256
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging dist/GlassMail-1.1.0.apk | head -12
 
       - name: Upload workflow artifact
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
-          name: GlassMail-1.0.0-signed
+          name: GlassMail-1.1.0-signed
           path: |
-            dist/GlassMail-1.0.0.apk
-            dist/GlassMail-1.0.0.apk.sha256
+            dist/GlassMail-1.1.0.apk
+            dist/GlassMail-1.1.0.apk.sha256
           if-no-files-found: error
 
       - name: Publish GitHub Release
@@ -90,9 +90,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v1.0.0 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload v1.0.0 dist/GlassMail-1.0.0.apk dist/GlassMail-1.0.0.apk.sha256 --clobber --repo "$GITHUB_REPOSITORY"
+          if gh release view v1.1.0 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload v1.1.0 dist/GlassMail-1.1.0.apk dist/GlassMail-1.1.0.apk.sha256 --clobber --repo "$GITHUB_REPOSITORY"
           else
-            gh release create v1.0.0 dist/GlassMail-1.0.0.apk dist/GlassMail-1.0.0.apk.sha256 \
-              --target "$GITHUB_SHA" --title "澄邮 GlassMail 1.0.0" --notes-file CHANGELOG.md --repo "$GITHUB_REPOSITORY"
+            gh release create v1.1.0 dist/GlassMail-1.1.0.apk dist/GlassMail-1.1.0.apk.sha256 \
+              --target "$GITHUB_SHA" --title "邮件 1.1.0" --notes-file CHANGELOG.md --repo "$GITHUB_REPOSITORY"
           fi
