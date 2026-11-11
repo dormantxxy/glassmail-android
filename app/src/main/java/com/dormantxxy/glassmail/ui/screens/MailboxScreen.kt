@@ -313,7 +313,7 @@ private fun iconForMailbox(kind: MailboxKind): ImageVector = when (kind) {
     MailboxKind.TRASH -> Icons.Rounded.Delete
     MailboxKind.SPAM -> Icons.Rounded.Report
     MailboxKind.STARRED -> Icons.Rounded.Star
-    MailboxKind.ALL -> Icons.Rounded.AllMail
+    MailboxKind.ALL -> Icons.Rounded.AllInbox
     MailboxKind.CUSTOM -> Icons.Rounded.Folder
 }
 
