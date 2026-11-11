@@ -194,6 +194,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteForever(message: MailMessage) { viewModelScope.launch { repository.deleteForever(message.id); reloadList() } }
     fun move(message: MailMessage, mailbox: Mailbox) { viewModelScope.launch { repository.move(message.id, mailbox.id); reloadList() } }
 
+    fun downloadAttachment(messageId: String, attachment: MailAttachment, destination: android.net.Uri) {
+        viewModelScope.launch { repository.downloadAttachment(messageId, attachment, destination) }
+    }
+
     fun setSearchQuery(value: String) { searchQuery.value = value }
 
     fun startNewMessage() {

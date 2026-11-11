@@ -5,6 +5,8 @@ import android.net.Uri
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -99,7 +101,8 @@ fun MessageScreen(
                             message = item,
                             attachments = detail.attachments[item.id].orEmpty(),
                             allowRemoteImages = prefs.remoteImagesEnabled,
-                            onEnableImages = { viewModel.setRemoteImages(true) }
+                            onEnableImages = { viewModel.setRemoteImages(true) },
+                            onDownload = { attachment, uri -> viewModel.downloadAttachment(item.id, attachment, uri) }
                         )
                     }
                 }
@@ -140,7 +143,13 @@ fun MessageScreen(
 }
 
 @Composable
-private fun MessageCard(message: MailMessage, attachments: List<MailAttachment>, allowRemoteImages: Boolean, onEnableImages: () -> Unit) {
+private fun MessageCard(
+    message: MailMessage,
+    attachments: List<MailAttachment>,
+    allowRemoteImages: Boolean,
+    onEnableImages: () -> Unit,
+    onDownload: (MailAttachment, Uri) -> Unit
+) {
     var expanded by remember(message.id) { mutableStateOf(true) }
     GlassSurface(Modifier.fillMaxWidth(), cornerRadius = 23.dp) {
         Column {
@@ -178,20 +187,33 @@ private fun MessageCard(message: MailMessage, attachments: List<MailAttachment>,
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("附件 (${attachments.size})", style = MaterialTheme.typography.labelLarge)
                         attachments.forEach { attachment ->
-                            Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .6f), shape = MaterialTheme.shapes.medium) {
-                                Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Rounded.InsertDriveFile, null, tint = MaterialTheme.colorScheme.primary)
-                                    Spacer(Modifier.width(10.dp)); Column(Modifier.weight(1f)) {
-                                        Text(attachment.fileName, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Text(formatBytes(attachment.sizeBytes), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
-                                    Icon(Icons.Rounded.Download, "下载", tint = MaterialTheme.colorScheme.primary)
-                                }
-                            }
+                            AttachmentDownloadRow(attachment) { destination -> onDownload(attachment, destination) }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun AttachmentDownloadRow(attachment: MailAttachment, onDestination: (Uri) -> Unit) {
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(attachment.mimeType)) { uri ->
+        if (uri != null) onDestination(uri)
+    }
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .6f),
+        shape = MaterialTheme.shapes.medium,
+        modifier = Modifier.clickable { launcher.launch(attachment.fileName) }
+    ) {
+        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.InsertDriveFile, null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(attachment.fileName, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(formatBytes(attachment.sizeBytes), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Icon(Icons.Rounded.Download, "下载", tint = MaterialTheme.colorScheme.primary)
         }
     }
 }

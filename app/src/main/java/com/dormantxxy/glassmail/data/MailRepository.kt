@@ -184,6 +184,27 @@ class MailRepository(private val context: Context) {
         touch()
     }
 
+    suspend fun downloadAttachment(messageId: String, attachment: MailAttachment, destination: Uri) = withContext(Dispatchers.IO) {
+        val message = database.getMessage(messageId) ?: error("邮件已不存在")
+        val account = database.getAccount(message.accountId) ?: error("账户已不存在")
+        if (account.isDemo) {
+            runCatching { context.contentResolver.delete(destination, null, null) }
+            events.tryEmit("演示附件仅用于界面预览")
+            return@withContext
+        }
+        val mailbox = database.getMailbox(message.mailboxId) ?: error("邮箱文件夹已不存在")
+        val secret = vault.get(account.id) ?: error("账户凭据已失效")
+        require(attachment.remotePart.isNotBlank()) { "缺少附件位置" }
+        val output = context.contentResolver.openOutputStream(destination) ?: error("无法创建目标文件")
+        try {
+            output.use { client.downloadAttachment(account, secret, mailbox, message.remoteUid, attachment.remotePart, it) }
+            events.tryEmit("附件已保存：${attachment.fileName}")
+        } catch (error: Throwable) {
+            runCatching { context.contentResolver.delete(destination, null, null) }
+            events.tryEmit("附件下载失败：${readableError(error)}")
+        }
+    }
+
     suspend fun enqueueSend(draft: MailDraft, undoDelaySeconds: Int): String = withContext(Dispatchers.IO) {
         val persisted = persistAttachments(draft)
         val sendAt = when {

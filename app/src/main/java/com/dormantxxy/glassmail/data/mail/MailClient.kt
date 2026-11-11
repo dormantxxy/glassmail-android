@@ -127,6 +127,29 @@ class MailClient(private val context: Context) {
         }
     }
 
+    fun downloadAttachment(
+        account: MailAccount,
+        secret: String,
+        mailbox: Mailbox,
+        uid: Long,
+        remotePart: String,
+        output: OutputStream
+    ) {
+        openStore(account, secret).use { store ->
+            val folder = store.getFolder(mailbox.serverName)
+            require(folder.exists()) { "服务端文件夹不存在" }
+            folder.open(Folder.READ_ONLY)
+            try {
+                val message = (folder as? UIDFolder)?.getMessageByUID(uid) ?: folder.getMessage(uid.toInt())
+                val part = findPart(message, remotePart)
+                part.inputStream.use { input -> input.copyTo(output) }
+                output.flush()
+            } finally {
+                runCatching { folder.close(false) }
+            }
+        }
+    }
+
     fun send(account: MailAccount, secret: String, draft: MailDraft) {
         require(draft.to.isNotEmpty() || draft.cc.isNotEmpty() || draft.bcc.isNotEmpty()) { "请至少填写一位收件人" }
         val session = Session.getInstance(smtpProperties(account))
@@ -246,6 +269,22 @@ class MailClient(private val context: Context) {
             }
             part.isMimeType("message/rfc822") -> (part.content as? Part)?.let { collectPart(it, "$partNumber.1", collector) }
         }
+    }
+
+    private fun findPart(root: Part, partNumber: String): Part {
+        var current = root
+        val path = partNumber.split('.').mapNotNull(String::toIntOrNull).drop(1)
+        for (number in path) {
+            current = when {
+                current.isMimeType("multipart/*") -> {
+                    val multipart = current.content as? Multipart ?: error("附件结构不可读")
+                    multipart.getBodyPart(number - 1)
+                }
+                current.isMimeType("message/rfc822") -> current.content as? Part ?: error("嵌套邮件不可读")
+                else -> error("找不到附件正文")
+            }
+        }
+        return current
     }
 
     private fun setFlag(account: MailAccount, secret: String, mailbox: Mailbox, uid: Long, flag: Flags.Flag, value: Boolean) {

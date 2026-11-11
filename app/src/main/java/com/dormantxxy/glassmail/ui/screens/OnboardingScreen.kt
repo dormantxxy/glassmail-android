@@ -143,6 +143,7 @@ private fun AccountForm(provider: MailProvider, busy: Boolean, onSubmit: (Accoun
     var email by rememberSaveable { mutableStateOf("") }
     var name by rememberSaveable { mutableStateOf("") }
     var username by rememberSaveable { mutableStateOf("") }
+    var usernameEdited by rememberSaveable { mutableStateOf(false) }
     var secret by rememberSaveable { mutableStateOf("") }
     var showSecret by rememberSaveable { mutableStateOf(false) }
     var auth by rememberSaveable { mutableStateOf(AuthType.PASSWORD) }
@@ -177,9 +178,9 @@ private fun AccountForm(provider: MailProvider, busy: Boolean, onSubmit: (Accoun
                 }
             }
         }
-        item { MailField(email, { email = it; if (username.isBlank()) username = it }, "邮箱地址", Icons.Rounded.AlternateEmail, false) }
+        item { MailField(email, { email = it; if (!usernameEdited) username = it }, "邮箱地址", Icons.Rounded.AlternateEmail, false) }
         item { MailField(name, { name = it }, "显示名称", Icons.Rounded.Person, false) }
-        item { MailField(username, { username = it }, "登录用户名", Icons.Rounded.AccountCircle, false) }
+        item { MailField(username, { username = it; usernameEdited = true }, "登录用户名", Icons.Rounded.AccountCircle, false) }
         item {
             OutlinedTextField(
                 value = secret,
