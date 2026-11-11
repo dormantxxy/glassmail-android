@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -5,8 +7,8 @@ plugins {
 }
 
 val releaseKey = rootProject.file("app/glassmail-release.p12")
-val localSigning = java.util.Properties().apply {
-    rootProject.file("signing.properties").takeIf { it.exists() }?.inputStream()?.use(::load)
+val localSigning = Properties().apply {
+    rootProject.file("signing.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
 }
 
 android {
