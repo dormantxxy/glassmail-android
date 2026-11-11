@@ -150,7 +150,10 @@ fun MailboxScreen(
                                 MessageListItem(
                                     message, preferences.compactRows, selectionMode, selectedIds,
                                     onSelectionChange = { selectedIds = it },
-                                    onOpen = onOpenMessage,
+                                    onOpen = { id ->
+                                        if (message.isDraft && id.startsWith("local-draft:")) viewModel.editDraft(id) { onCompose() }
+                                        else onOpenMessage(id)
+                                    },
                                     onStar = viewModel::toggleStar,
                                     onArchive = viewModel::archive,
                                     onTrash = viewModel::trash
@@ -163,7 +166,10 @@ fun MailboxScreen(
                                 MessageListItem(
                                     message, preferences.compactRows, selectionMode, selectedIds,
                                     onSelectionChange = { selectedIds = it },
-                                    onOpen = onOpenMessage,
+                                    onOpen = { id ->
+                                        if (message.isDraft && id.startsWith("local-draft:")) viewModel.editDraft(id) { onCompose() }
+                                        else onOpenMessage(id)
+                                    },
                                     onStar = viewModel::toggleStar,
                                     onArchive = viewModel::archive,
                                     onTrash = viewModel::trash
@@ -411,9 +417,11 @@ private fun MailboxesPane(
             MailboxGroup {
                 MailboxRow(Icons.Rounded.AllInbox, IOSBlue, "所有收件箱", mailboxes.filter { it.kind == MailboxKind.INBOX }.sumOf { it.unreadCount }, selectedAccountId.isBlank()) { onInbox("") }
                 GroupLine()
-                MailboxRow(Icons.Rounded.MarkEmailUnread, IOSBlue, "未读", mailboxes.sumOf { it.unreadCount }) { /* inbox already exposes unread filter */ }
+                MailboxRow(Icons.Rounded.MarkEmailUnread, IOSBlue, "未读", mailboxes.sumOf { it.unreadCount }) { onInbox("") }
                 GroupLine()
-                MailboxRow(Icons.Rounded.Star, IOSOrange, "有旗标", 0) { onSmart(MailboxKind.STARRED) }
+                MailboxRow(Icons.Rounded.Star, IOSOrange, "VIP", 0) { onSmart(MailboxKind.VIP) }
+                GroupLine()
+                MailboxRow(Icons.Rounded.Flag, IOSOrange, "有旗标", 0) { onSmart(MailboxKind.STARRED) }
                 GroupLine()
                 MailboxRow(Icons.Rounded.AttachFile, Color(0xFF8E8E93), "附件", 0) { onSmart(MailboxKind.ALL) }
             }
@@ -534,7 +542,8 @@ private fun mailboxIcon(kind: MailboxKind): ImageVector = when (kind) {
     MailboxKind.ARCHIVE -> Icons.Rounded.Archive
     MailboxKind.TRASH -> Icons.Rounded.Delete
     MailboxKind.SPAM -> Icons.Rounded.Report
-    MailboxKind.STARRED -> Icons.Rounded.Star
+    MailboxKind.STARRED -> Icons.Rounded.Flag
+    MailboxKind.VIP -> Icons.Rounded.Star
     MailboxKind.ALL -> Icons.Rounded.AllInbox
     MailboxKind.CUSTOM -> Icons.Rounded.Folder
 }
@@ -543,6 +552,6 @@ private fun mailboxColor(kind: MailboxKind): Color = when (kind) {
     MailboxKind.SENT -> IOSBlue
     MailboxKind.ARCHIVE -> Color(0xFF8E8E93)
     MailboxKind.TRASH, MailboxKind.SPAM -> IOSRed
-    MailboxKind.STARRED -> IOSOrange
+    MailboxKind.STARRED, MailboxKind.VIP -> IOSOrange
     else -> IOSBlue
 }

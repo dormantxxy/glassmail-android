@@ -46,7 +46,7 @@ fun ComposeScreen(viewModel: AppViewModel, onBack: () -> Unit) {
     var accountId by rememberSaveable { mutableStateOf(seed.accountId) }
     var to by rememberSaveable { mutableStateOf(seed.to) }
     var cc by rememberSaveable { mutableStateOf(seed.cc) }
-    var bcc by rememberSaveable { mutableStateOf("") }
+    var bcc by rememberSaveable { mutableStateOf(seed.bcc) }
     var subject by rememberSaveable { mutableStateOf(seed.subject) }
     var body by rememberSaveable { mutableStateOf(seed.body) }
     var showCc by rememberSaveable { mutableStateOf(seed.cc.isNotBlank()) }
@@ -59,9 +59,12 @@ fun ComposeScreen(viewModel: AppViewModel, onBack: () -> Unit) {
         accountId = seed.accountId.ifBlank { accounts.firstOrNull()?.id.orEmpty() }
         to = seed.to
         cc = seed.cc
+        bcc = seed.bcc
         subject = seed.subject
         body = seed.body
-        showCc = seed.cc.isNotBlank()
+        attachments.clear()
+        attachments.addAll(seed.attachments)
+        showCc = seed.cc.isNotBlank() || seed.bcc.isNotBlank()
     }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
@@ -181,9 +184,16 @@ fun ComposeScreen(viewModel: AppViewModel, onBack: () -> Unit) {
         ModalBottomSheet(onDismissRequest = { cancelSheet = false }, containerColor = MaterialTheme.colorScheme.surfaceVariant) {
             Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp))) {
+                    Row(
+                        Modifier.fillMaxWidth().clickable {
+                            viewModel.saveComposeDraft(accountId, to, cc, bcc, subject, body, attachments.toList(), onBack)
+                        }.padding(16.dp),
+                        horizontalArrangement = Arrangement.Center
+                    ) { Text("存储草稿", color = IOSBlue) }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     Row(Modifier.fillMaxWidth().clickable { cancelSheet = false }.padding(16.dp), horizontalArrangement = Arrangement.Center) { Text("继续编辑", color = IOSBlue) }
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    Row(Modifier.fillMaxWidth().clickable(onClick = onBack).padding(16.dp), horizontalArrangement = Arrangement.Center) { Text("删除草稿", color = IOSRed) }
+                    Row(Modifier.fillMaxWidth().clickable { viewModel.deleteComposeDraft(onBack) }.padding(16.dp), horizontalArrangement = Arrangement.Center) { Text("删除草稿", color = IOSRed) }
                 }
                 TextButton(onClick = { cancelSheet = false }, Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp))) { Text("取消", color = IOSBlue) }
             }

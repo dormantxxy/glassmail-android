@@ -10,7 +10,7 @@ import java.util.UUID
 
 class MailDatabase(context: Context) : SQLiteOpenHelper(context, "glassmail.db", null, VERSION) {
     companion object {
-        private const val VERSION = 1
+        private const val VERSION = 2
     }
 
     override fun onConfigure(db: SQLiteDatabase) {
@@ -120,9 +120,25 @@ class MailDatabase(context: Context) : SQLiteOpenHelper(context, "glassmail.db",
                 last_error TEXT NOT NULL DEFAULT ''
             )
         """.trimIndent())
+        createSenderPreferences(db)
     }
 
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        if (oldVersion < 2) createSenderPreferences(db)
+    }
+
+    private fun createSenderPreferences(db: SQLiteDatabase) {
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS sender_preferences (
+                account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                sender TEXT NOT NULL COLLATE NOCASE,
+                category TEXT,
+                is_vip INTEGER NOT NULL DEFAULT 0,
+                is_blocked INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY(account_id, sender)
+            )
+        """.trimIndent())
+    }
 
     fun listAccounts(): List<MailAccount> = readableDatabase.query(
         "accounts", null, null, null, null, null, "created_at ASC"
@@ -231,6 +247,7 @@ class MailDatabase(context: Context) : SQLiteOpenHelper(context, "glassmail.db",
         if (accountId != null) { clauses += "account_id=?"; args += accountId }
         when (kind) {
             MailboxKind.STARRED -> clauses += "is_starred=1"
+            MailboxKind.VIP -> clauses += "EXISTS (SELECT 1 FROM sender_preferences p WHERE p.account_id=messages.account_id AND p.sender=messages.from_address AND p.is_vip=1)"
             MailboxKind.ALL -> Unit
             else -> return emptyList()
         }
@@ -270,8 +287,52 @@ class MailDatabase(context: Context) : SQLiteOpenHelper(context, "glassmail.db",
         writableDatabase.update("messages", ContentValues().apply { put("mailbox_id", targetMailboxId) }, "id=?", arrayOf(id))
     }
 
+    fun moveSenderMessages(accountId: String, sender: String, targetMailboxId: String) {
+        writableDatabase.update(
+            "messages",
+            ContentValues().apply { put("mailbox_id", targetMailboxId) },
+            "account_id=? AND from_address=?",
+            arrayOf(accountId, sender)
+        )
+    }
+
     fun deleteMessage(id: String) {
         writableDatabase.delete("messages", "id=?", arrayOf(id))
+    }
+
+    fun senderCategory(accountId: String, sender: String): MailCategory? = readableDatabase.query(
+        "sender_preferences", arrayOf("category"), "account_id=? AND sender=?", arrayOf(accountId, sender), null, null, null, "1"
+    ).use { cursor ->
+        if (!cursor.moveToFirst() || cursor.isNull(0)) null else runCatching { MailCategory.valueOf(cursor.getString(0)) }.getOrNull()
+    }
+
+    fun setSenderCategory(accountId: String, sender: String, category: MailCategory) {
+        updateSenderPreference(accountId, sender, ContentValues().apply { put("category", category.name) })
+        writableDatabase.update("messages", ContentValues().apply { put("category", category.name) }, "account_id=? AND from_address=?", arrayOf(accountId, sender))
+    }
+
+    fun setSenderVip(accountId: String, sender: String, value: Boolean) {
+        updateSenderPreference(accountId, sender, ContentValues().apply { put("is_vip", if (value) 1 else 0) })
+    }
+
+    fun isSenderVip(accountId: String, sender: String): Boolean = readableDatabase.query(
+        "sender_preferences", arrayOf("is_vip"), "account_id=? AND sender=?", arrayOf(accountId, sender), null, null, null, "1"
+    ).use { it.moveToFirst() && it.getInt(0) != 0 }
+
+    fun setSenderBlocked(accountId: String, sender: String, value: Boolean) {
+        updateSenderPreference(accountId, sender, ContentValues().apply { put("is_blocked", if (value) 1 else 0) })
+    }
+
+    fun isSenderBlocked(accountId: String, sender: String): Boolean = readableDatabase.query(
+        "sender_preferences", arrayOf("is_blocked"), "account_id=? AND sender=?", arrayOf(accountId, sender), null, null, null, "1"
+    ).use { it.moveToFirst() && it.getInt(0) != 0 }
+
+    private fun updateSenderPreference(accountId: String, sender: String, changes: ContentValues) {
+        val db = writableDatabase
+        val values = ContentValues(changes).apply { put("account_id", accountId); put("sender", sender) }
+        if (db.update("sender_preferences", changes, "account_id=? AND sender=?", arrayOf(accountId, sender)) == 0) {
+            db.insertOrThrow("sender_preferences", null, values)
+        }
     }
 
     fun saveOutbox(draft: MailDraft, status: String = "pending", error: String = "") {
@@ -283,6 +344,14 @@ class MailDatabase(context: Context) : SQLiteOpenHelper(context, "glassmail.db",
             put("created_at", draft.createdAt); put("scheduled_at", draft.scheduledAt); put("status", status); put("last_error", error)
         }
         writableDatabase.insertWithOnConflict("outbox", null, v, SQLiteDatabase.CONFLICT_REPLACE)
+    }
+
+    fun listOutbox(status: String, accountId: String? = null): List<MailDraft> {
+        val where = if (accountId == null) "status=?" else "status=? AND account_id=?"
+        val args = if (accountId == null) arrayOf(status) else arrayOf(status, accountId)
+        return readableDatabase.query("outbox", null, where, args, null, null, "created_at DESC").use { cursor ->
+            generateSequence { if (cursor.moveToNext()) readDraft(cursor) else null }.toList()
+        }
     }
 
     fun getOutbox(id: String): MailDraft? = readableDatabase.query(

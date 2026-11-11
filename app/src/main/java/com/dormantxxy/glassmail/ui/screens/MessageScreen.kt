@@ -1,6 +1,9 @@
 package com.dormantxxy.glassmail.ui.screens
 
+import android.content.Context
 import android.content.Intent
+import android.print.PrintAttributes
+import android.print.PrintManager
 import android.net.Uri
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
@@ -27,6 +30,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.dormantxxy.glassmail.data.model.MailAttachment
+import com.dormantxxy.glassmail.data.model.MailCategory
 import com.dormantxxy.glassmail.data.model.MailMessage
 import com.dormantxxy.glassmail.data.model.MailboxKind
 import com.dormantxxy.glassmail.ui.AppViewModel
@@ -35,6 +39,7 @@ import com.dormantxxy.glassmail.ui.theme.IOSBlue
 import com.dormantxxy.glassmail.ui.theme.IOSOrange
 import com.dormantxxy.glassmail.ui.theme.IOSRed
 import java.text.DateFormat
+import java.util.Calendar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,10 +47,13 @@ fun MessageScreen(messageId: String, viewModel: AppViewModel, onBack: () -> Unit
     val detail by viewModel.detailState.collectAsState()
     val mailboxes by viewModel.mailboxes.collectAsState()
     val prefs by viewModel.preferences.collectAsState()
+    val context = LocalContext.current
     var showMove by remember { mutableStateOf(false) }
     var showDelete by remember { mutableStateOf(false) }
     var showMore by remember { mutableStateOf(false) }
     var showReply by remember { mutableStateOf(false) }
+    var showCategorize by remember { mutableStateOf(false) }
+    var showReminder by remember { mutableStateOf(false) }
 
     LaunchedEffect(messageId) { viewModel.openMessage(messageId) }
     val message = detail.selected
@@ -115,12 +123,59 @@ fun MessageScreen(messageId: String, viewModel: AppViewModel, onBack: () -> Unit
                 SheetDivider()
                 ActionSheetRow(Icons.Rounded.Flag, if (message.isStarred) "取消旗标" else "旗标", IOSOrange) { showMore = false; viewModel.toggleStar(message) }
                 SheetDivider()
+                ActionSheetRow(Icons.Rounded.NotificationsActive, "提醒我") { showMore = false; showReminder = true }
+                SheetDivider()
+                ActionSheetRow(Icons.Rounded.Category, "将发件人归类") { showMore = false; showCategorize = true }
+                SheetDivider()
+                ActionSheetRow(Icons.Rounded.Star, "添加到 VIP") { showMore = false; viewModel.toggleVip(message) }
+                SheetDivider()
                 ActionSheetRow(Icons.Rounded.DriveFileMove, "移动邮件") { showMore = false; showMove = true }
+                SheetDivider()
+                ActionSheetRow(Icons.Rounded.Block, "屏蔽此发件人", IOSRed) { showMore = false; viewModel.blockSender(message); onBack() }
+                SheetDivider()
+                ActionSheetRow(Icons.Rounded.Print, "打印") { showMore = false; printMessage(context, message) }
                 SheetDivider()
                 ActionSheetRow(Icons.Rounded.Delete, "移到废纸篓", IOSRed) { showMore = false; showDelete = true }
             },
             onDismiss = { showMore = false }
         )
+    }
+
+    if (message != null && showReminder) {
+        ModalBottomSheet(onDismissRequest = { showReminder = false }, containerColor = MaterialTheme.colorScheme.surfaceVariant) {
+            Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 28.dp)) {
+                Text("提醒我", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(8.dp))
+                Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp))) {
+                    ReminderRow("1 小时后") { viewModel.remind(message, System.currentTimeMillis() + 60 * 60 * 1000L); showReminder = false }
+                    SheetDivider()
+                    ReminderRow("今晚") { viewModel.remind(message, nextReminderTime(20, false)); showReminder = false }
+                    SheetDivider()
+                    ReminderRow("明天") { viewModel.remind(message, nextReminderTime(9, true)); showReminder = false }
+                }
+            }
+        }
+    }
+
+    if (message != null && showCategorize) {
+        ModalBottomSheet(onDismissRequest = { showCategorize = false }, containerColor = MaterialTheme.colorScheme.surfaceVariant) {
+            Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 28.dp)) {
+                Text("将发件人归类", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(8.dp))
+                Text(message.from.name.ifBlank { message.from.address }, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(10.dp))
+                Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp))) {
+                    MailCategory.entries.forEachIndexed { index, category ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable { viewModel.categorizeSender(message, category); showCategorize = false }.padding(horizontal = 16.dp, vertical = 13.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(category.label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                            if (message.category == category) Icon(Icons.Rounded.Check, null, tint = IOSBlue)
+                        }
+                        if (index != MailCategory.entries.lastIndex) SheetDivider()
+                    }
+                }
+            }
+        }
     }
 
     if (message != null && showMove) {
@@ -318,6 +373,14 @@ private fun ActionSheetRow(icon: androidx.compose.ui.graphics.vector.ImageVector
     }
 }
 
+@Composable
+private fun ReminderRow(label: String, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+        Icon(Icons.Rounded.Schedule, null, tint = IOSBlue)
+    }
+}
+
 @Composable private fun SheetDivider() { HorizontalDivider(Modifier.padding(start = 16.dp), color = MaterialTheme.colorScheme.outlineVariant) }
 
 private fun formatBytes(bytes: Long): String = when {
@@ -325,4 +388,30 @@ private fun formatBytes(bytes: Long): String = when {
     bytes < 1024 -> "$bytes B"
     bytes < 1024 * 1024 -> "%.1f KB".format(bytes / 1024.0)
     else -> "%.1f MB".format(bytes / 1024.0 / 1024.0)
+}
+
+private fun nextReminderTime(hour: Int, forceTomorrow: Boolean): Long = Calendar.getInstance().apply {
+    val now = timeInMillis
+    set(Calendar.HOUR_OF_DAY, hour)
+    set(Calendar.MINUTE, 0)
+    set(Calendar.SECOND, 0)
+    set(Calendar.MILLISECOND, 0)
+    if (forceTomorrow || timeInMillis <= now) add(Calendar.DAY_OF_YEAR, 1)
+}.timeInMillis
+
+private fun printMessage(context: Context, message: MailMessage) {
+    val webView = WebView(context)
+    webView.settings.javaScriptEnabled = false
+    webView.webViewClient = object : WebViewClient() {
+        override fun onPageFinished(view: WebView, url: String?) {
+            val manager = context.getSystemService(Context.PRINT_SERVICE) as PrintManager
+            manager.print(
+                message.subject.ifBlank { "邮件" },
+                view.createPrintDocumentAdapter(message.subject.ifBlank { "邮件" }),
+                PrintAttributes.Builder().build()
+            )
+        }
+    }
+    val body = message.bodyHtml.ifBlank { "<pre>${android.text.TextUtils.htmlEncode(message.bodyText)}</pre>" }
+    webView.loadDataWithBaseURL(null, "<html><body><h2>${android.text.TextUtils.htmlEncode(message.subject)}</h2>$body</body></html>", "text/html", "UTF-8", null)
 }

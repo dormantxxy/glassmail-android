@@ -8,6 +8,7 @@ import com.dormantxxy.glassmail.data.mail.MailClient
 import com.dormantxxy.glassmail.data.model.*
 import com.dormantxxy.glassmail.data.security.SecureVault
 import com.dormantxxy.glassmail.sync.MailSyncWorker
+import com.dormantxxy.glassmail.sync.MailReminderWorker
 import com.dormantxxy.glassmail.sync.SendMailWorker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -127,7 +128,10 @@ class MailRepository(private val context: Context) {
             _syncState.value = SyncState.Running("正在同步 ${mailbox.displayName}")
             val batch = client.fetchRecent(account, secret, mailbox, if (index == 0) 100 else 40)
             batch.messages.forEach { (message, attachments) ->
-                if (database.upsertMessage(message, attachments)) inserted++
+                if (!database.isSenderBlocked(message.accountId, message.from.address)) {
+                    val category = database.senderCategory(message.accountId, message.from.address) ?: message.category
+                    if (database.upsertMessage(message.copy(category = category), attachments)) inserted++
+                }
             }
             database.upsertMailbox(mailbox.copy(totalCount = batch.totalCount, unreadCount = batch.unreadCount))
         }
@@ -140,7 +144,8 @@ class MailRepository(private val context: Context) {
 
     suspend fun mailbox(mailbox: Mailbox): List<MailMessage> = withContext(Dispatchers.IO) {
         when (mailbox.kind) {
-            MailboxKind.STARRED, MailboxKind.ALL -> database.smartMessages(mailbox.accountId.takeIf { it.isNotBlank() }, mailbox.kind)
+            MailboxKind.STARRED, MailboxKind.VIP, MailboxKind.ALL -> database.smartMessages(mailbox.accountId.takeIf { it.isNotBlank() }, mailbox.kind)
+            MailboxKind.DRAFTS -> (localDraftMessages(mailbox.accountId) + database.listMessages(mailbox.id)).sortedByDescending { it.receivedAt }
             else -> database.listMessages(mailbox.id)
         }
     }
@@ -152,6 +157,31 @@ class MailRepository(private val context: Context) {
     suspend fun message(id: String): MailMessage? = withContext(Dispatchers.IO) { database.getMessage(id) }
     suspend fun thread(message: MailMessage): List<MailMessage> = withContext(Dispatchers.IO) { database.getThread(message.accountId, message.threadKey) }
     suspend fun attachments(messageId: String): List<MailAttachment> = withContext(Dispatchers.IO) { database.listAttachments(messageId) }
+
+    suspend fun categorizeSender(messageId: String, category: MailCategory) = withContext(Dispatchers.IO) {
+        val message = database.getMessage(messageId) ?: return@withContext
+        database.setSenderCategory(message.accountId, message.from.address, category)
+        touch()
+        events.tryEmit("以后来自该发件人的邮件将移到“${category.label}”")
+    }
+
+    suspend fun toggleVip(messageId: String) = withContext(Dispatchers.IO) {
+        val message = database.getMessage(messageId) ?: return@withContext
+        val value = !database.isSenderVip(message.accountId, message.from.address)
+        database.setSenderVip(message.accountId, message.from.address, value)
+        touch()
+        events.tryEmit(if (value) "已添加到 VIP" else "已从 VIP 移除")
+    }
+
+    suspend fun blockSender(messageId: String) = withContext(Dispatchers.IO) {
+        val message = database.getMessage(messageId) ?: return@withContext
+        database.setSenderBlocked(message.accountId, message.from.address, true)
+        val target = database.findMailbox(message.accountId, MailboxKind.TRASH)
+            ?: database.findMailbox(message.accountId, MailboxKind.SPAM)
+        if (target != null) database.moveSenderMessages(message.accountId, message.from.address, target.id)
+        touch()
+        events.tryEmit("已屏蔽该发件人")
+    }
 
     suspend fun setRead(messageId: String, read: Boolean) = mutateMessage(messageId, read, Mutation.READ)
     suspend fun setStarred(messageId: String, starred: Boolean) = mutateMessage(messageId, starred, Mutation.STAR)
@@ -205,6 +235,51 @@ class MailRepository(private val context: Context) {
         }
     }
 
+    suspend fun saveDraft(draft: MailDraft): String = withContext(Dispatchers.IO) {
+        require(draft.accountId.isNotBlank()) { "请选择发件账户" }
+        val persisted = persistAttachments(draft)
+        database.saveOutbox(persisted, status = "draft")
+        touch()
+        events.tryEmit("草稿已存储")
+        persisted.id
+    }
+
+    suspend fun draft(id: String): MailDraft? = withContext(Dispatchers.IO) {
+        database.getOutbox(id.removePrefix("local-draft:"))
+    }
+
+    suspend fun deleteDraft(id: String) = withContext(Dispatchers.IO) {
+        val clean = id.removePrefix("local-draft:")
+        database.deleteOutbox(clean)
+        File(context.filesDir, "outbox/$clean").deleteRecursively()
+        touch()
+    }
+
+    private fun localDraftMessages(accountId: String): List<MailMessage> {
+        val account = database.getAccount(accountId) ?: return emptyList()
+        val box = database.findMailbox(accountId, MailboxKind.DRAFTS) ?: return emptyList()
+        return database.listOutbox("draft", accountId).map { draft ->
+            MailMessage(
+                id = "local-draft:${draft.id}",
+                accountId = accountId,
+                mailboxId = box.id,
+                threadKey = MailRules.threadKey(draft.subject),
+                from = MailAddress(account.displayName, account.email),
+                to = draft.to.map { MailAddress(address = it) },
+                cc = draft.cc.map { MailAddress(address = it) },
+                bcc = draft.bcc.map { MailAddress(address = it) },
+                subject = draft.subject.ifBlank { "(无主题)" },
+                preview = MailRules.cleanPreview(draft.body),
+                bodyText = draft.body,
+                sentAt = draft.createdAt,
+                receivedAt = draft.createdAt,
+                isRead = true,
+                isDraft = true,
+                hasAttachments = draft.attachments.isNotEmpty()
+            )
+        }
+    }
+
     suspend fun enqueueSend(draft: MailDraft, undoDelaySeconds: Int): String = withContext(Dispatchers.IO) {
         val persisted = persistAttachments(draft)
         val sendAt = when {
@@ -247,6 +322,20 @@ class MailRepository(private val context: Context) {
             events.tryEmit("发送失败：${readableError(error)}")
             false
         }
+    }
+
+    fun scheduleReminder(messageId: String, atMillis: Long) {
+        val delay = (atMillis - System.currentTimeMillis()).coerceAtLeast(0L)
+        val request = OneTimeWorkRequestBuilder<MailReminderWorker>()
+            .setInputData(workDataOf(MailReminderWorker.MESSAGE_ID to messageId))
+            .setInitialDelay(delay, TimeUnit.MILLISECONDS)
+            .build()
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            "glassmail.reminder.$messageId",
+            ExistingWorkPolicy.REPLACE,
+            request
+        )
+        events.tryEmit("将在指定时间提醒你")
     }
 
     fun schedulePeriodicSync(account: MailAccount) {
@@ -303,10 +392,15 @@ class MailRepository(private val context: Context) {
             val safeName = attachment.name.replace(Regex("[^a-zA-Z0-9._\\-\u4e00-\u9fa5]"), "_").take(100).ifBlank { "attachment-$index" }
             val target = File(dir, "${index}_$safeName")
             val source = Uri.parse(attachment.uri)
-            val input = if (source.scheme == "file") FileInputStream(File(source.path!!)) else context.contentResolver.openInputStream(source)
-            requireNotNull(input) { "无法读取附件 ${attachment.name}" }
-            input.use { stream -> FileOutputStream(target).use(stream::copyTo) }
-            attachment.copy(uri = Uri.fromFile(target).toString(), sizeBytes = target.length())
+            val sourceFile = source.path?.let(::File).takeIf { source.scheme == "file" }
+            if (sourceFile != null && sourceFile.absolutePath == target.absolutePath) {
+                attachment.copy(sizeBytes = sourceFile.length())
+            } else {
+                val input = sourceFile?.let(::FileInputStream) ?: context.contentResolver.openInputStream(source)
+                requireNotNull(input) { "无法读取附件 ${attachment.name}" }
+                input.use { stream -> FileOutputStream(target).use(stream::copyTo) }
+                attachment.copy(uri = Uri.fromFile(target).toString(), sizeBytes = target.length())
+            }
         }
         return draft.copy(attachments = copied)
     }
@@ -314,6 +408,9 @@ class MailRepository(private val context: Context) {
     private fun ensureCoreMailbox(accountId: String) {
         if (database.findMailbox(accountId, MailboxKind.INBOX) == null) {
             database.upsertMailbox(Mailbox("$accountId-local-inbox", accountId, "INBOX", "收件箱", MailboxKind.INBOX, sortOrder = 0))
+        }
+        if (database.findMailbox(accountId, MailboxKind.DRAFTS) == null) {
+            database.upsertMailbox(Mailbox("$accountId-local-drafts", accountId, "Local Drafts", "草稿箱", MailboxKind.DRAFTS, sortOrder = 2000))
         }
     }
 

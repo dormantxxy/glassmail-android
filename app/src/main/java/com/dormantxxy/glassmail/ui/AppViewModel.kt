@@ -29,11 +29,14 @@ data class DetailState(
 )
 
 data class ComposeSeed(
+    val draftId: String = "",
     val accountId: String = "",
     val to: String = "",
     val cc: String = "",
+    val bcc: String = "",
     val subject: String = "",
     val body: String = "",
+    val attachments: List<LocalAttachment> = emptyList(),
     val inReplyTo: String = "",
     val references: String = ""
 )
@@ -187,6 +190,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun categorizeSender(message: MailMessage, category: MailCategory) {
+        viewModelScope.launch { repository.categorizeSender(message.id, category); openMessage(message.id); reloadList() }
+    }
+    fun toggleVip(message: MailMessage) { viewModelScope.launch { repository.toggleVip(message.id); reloadList() } }
+    fun blockSender(message: MailMessage) { viewModelScope.launch { repository.blockSender(message.id); reloadList() } }
+    fun remind(message: MailMessage, atMillis: Long) { repository.scheduleReminder(message.id, atMillis) }
+
     fun toggleRead(message: MailMessage) { viewModelScope.launch { repository.setRead(message.id, !message.isRead); reloadList() } }
     fun toggleStar(message: MailMessage) { viewModelScope.launch { repository.setStarred(message.id, !message.isStarred); openMessage(message.id); reloadList() } }
     fun archive(message: MailMessage) { viewModelScope.launch { repository.archive(message.id); reloadList() } }
@@ -202,6 +212,69 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun startNewMessage() {
         _composeSeed.value = ComposeSeed(accountId = preferredAccountId())
+    }
+
+    fun editDraft(messageId: String, onReady: () -> Unit) {
+        viewModelScope.launch {
+            val draft = repository.draft(messageId) ?: run {
+                _events.emit(UiEvent("草稿不存在"))
+                return@launch
+            }
+            _composeSeed.value = ComposeSeed(
+                draftId = draft.id,
+                accountId = draft.accountId,
+                to = draft.to.joinToString(", "),
+                cc = draft.cc.joinToString(", "),
+                bcc = draft.bcc.joinToString(", "),
+                subject = draft.subject,
+                body = draft.body,
+                attachments = draft.attachments,
+                inReplyTo = draft.inReplyTo,
+                references = draft.references
+            )
+            onReady()
+        }
+    }
+
+    fun saveComposeDraft(
+        accountId: String,
+        to: String,
+        cc: String,
+        bcc: String,
+        subject: String,
+        body: String,
+        attachments: List<LocalAttachment>,
+        onSaved: () -> Unit
+    ) {
+        viewModelScope.launch {
+            val seed = _composeSeed.value
+            runCatching {
+                repository.saveDraft(
+                    MailDraft(
+                        id = seed.draftId.ifBlank { java.util.UUID.randomUUID().toString() },
+                        accountId = accountId.ifBlank { preferredAccountId() },
+                        to = parseRecipients(to),
+                        cc = parseRecipients(cc),
+                        bcc = parseRecipients(bcc),
+                        subject = subject,
+                        body = body,
+                        attachments = attachments,
+                        inReplyTo = seed.inReplyTo,
+                        references = seed.references
+                    )
+                )
+            }.onSuccess { onSaved(); reloadList() }
+                .onFailure { _events.emit(UiEvent(it.message ?: "无法存储草稿")) }
+        }
+    }
+
+    fun deleteComposeDraft(onDeleted: () -> Unit) {
+        val id = _composeSeed.value.draftId
+        viewModelScope.launch {
+            if (id.isNotBlank()) repository.deleteDraft(id)
+            onDeleted()
+            reloadList()
+        }
     }
 
     fun reply(message: MailMessage, replyAll: Boolean = false) {
@@ -244,6 +317,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             runCatching {
                 val draft = MailDraft(
+                    id = seed.draftId.ifBlank { java.util.UUID.randomUUID().toString() },
                     accountId = accountId.ifBlank { preferredAccountId() },
                     to = recipients,
                     cc = parseRecipients(cc),

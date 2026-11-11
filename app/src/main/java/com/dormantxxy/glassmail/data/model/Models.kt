@@ -22,7 +22,8 @@ enum class MailboxKind(val label: String) {
     ARCHIVE("归档"),
     TRASH("废纸篓"),
     SPAM("垃圾邮件"),
-    STARRED("已加星标"),
+    STARRED("有旗标"),
+    VIP("VIP"),
     ALL("所有邮件"),
     CUSTOM("文件夹")
 }

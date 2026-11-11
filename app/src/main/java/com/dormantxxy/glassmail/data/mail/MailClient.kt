@@ -376,6 +376,7 @@ class MailClient(private val context: Context) {
     private fun kindOrder(kind: MailboxKind): Int = when (kind) {
         MailboxKind.INBOX -> 0
         MailboxKind.STARRED -> 10
+        MailboxKind.VIP -> 11
         MailboxKind.DRAFTS -> 20
         MailboxKind.SENT -> 30
         MailboxKind.ARCHIVE -> 40
