@@ -5,8 +5,13 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavType
@@ -68,7 +73,7 @@ fun GlassMailRoot(viewModel: AppViewModel, mailtoRequest: MailtoRequest? = null)
                 }
             }
 
-            Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { _ ->
+            Box(Modifier.fillMaxSize()) {
                 NavHost(navController = navController, startDestination = Routes.MAILBOX) {
                     composable(Routes.MAILBOX) {
                         MailboxScreen(
@@ -113,6 +118,7 @@ fun GlassMailRoot(viewModel: AppViewModel, mailtoRequest: MailtoRequest? = null)
                         AccountScreen(entry.arguments?.getString("id").orEmpty(), viewModel) { navController.popBackStack() }
                     }
                 }
+                SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
             }
         }
     }
