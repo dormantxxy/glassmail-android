@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">澄邮</string>
+    <string name="app_name">邮件</string>
     <string name="notification_channel_sync">邮件同步</string>
     <string name="notification_channel_mail">新邮件</string>
 </resources>

@@ -3,56 +3,146 @@ package com.dormantxxy.glassmail.ui.theme
 import android.app.Activity
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import com.dormantxxy.glassmail.data.ThemeMode
 
-val MailBlue = Color(0xFF0A84FF)
-val MailCyan = Color(0xFF5AC8FA)
-val MailIndigo = Color(0xFF5E5CE6)
-val MailGreen = Color(0xFF30D158)
-val MailOrange = Color(0xFFFF9F0A)
-val MailRed = Color(0xFFFF453A)
-val MailPurple = Color(0xFFBF5AF2)
+val IOSBlue = Color(0xFF007AFF)
+val IOSRed = Color(0xFFFF3B30)
+val IOSGreen = Color(0xFF34C759)
+val IOSOrange = Color(0xFFFF9500)
+val IOSYellow = Color(0xFFFFCC00)
+val IOSPurple = Color(0xFFAF52DE)
+val IOSTeal = Color(0xFF5AC8FA)
+
+// Kept as aliases for the data/avatar layer.
+val MailBlue = IOSBlue
+val MailCyan = IOSTeal
+val MailIndigo = Color(0xFF5856D6)
+val MailGreen = IOSGreen
+val MailOrange = IOSOrange
+val MailRed = IOSRed
+val MailPurple = IOSPurple
 
 private val LightColors = lightColorScheme(
-    primary = Color(0xFF007AFF),
+    primary = IOSBlue,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFD9ECFF),
-    onPrimaryContainer = Color(0xFF003A70),
-    secondary = Color(0xFF5E5CE6),
-    tertiary = Color(0xFF00A7C4),
-    background = Color(0xFFF4F7FC),
-    onBackground = Color(0xFF121318),
-    surface = Color(0xFFF9FBFF),
-    onSurface = Color(0xFF121318),
-    surfaceVariant = Color(0xFFE9EEF6),
-    onSurfaceVariant = Color(0xFF5A6070),
-    outline = Color(0xFFC6CDDA),
-    error = Color(0xFFFF3B30)
+    primaryContainer = Color(0xFFE5F1FF),
+    onPrimaryContainer = IOSBlue,
+    secondary = Color(0xFF5856D6),
+    background = Color.White,
+    onBackground = Color.Black,
+    surface = Color.White,
+    onSurface = Color.Black,
+    surfaceVariant = Color(0xFFF2F2F7),
+    onSurfaceVariant = Color(0xFF6C6C70),
+    outline = Color(0xFFC6C6C8),
+    outlineVariant = Color(0xFFE5E5EA),
+    error = IOSRed
 )
 
 private val DarkColors = darkColorScheme(
-    primary = Color(0xFF5EB0FF),
-    onPrimary = Color(0xFF002E55),
-    primaryContainer = Color(0xFF0A3D68),
-    onPrimaryContainer = Color(0xFFD7EAFF),
-    secondary = Color(0xFFA7A4FF),
-    tertiary = Color(0xFF65D8EF),
-    background = Color(0xFF090C12),
-    onBackground = Color(0xFFF2F4FA),
-    surface = Color(0xFF11151D),
-    onSurface = Color(0xFFF2F4FA),
-    surfaceVariant = Color(0xFF1B222D),
-    onSurfaceVariant = Color(0xFFB6BECC),
-    outline = Color(0xFF3A4351),
-    error = Color(0xFFFF6961)
+    primary = Color(0xFF0A84FF),
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFF123A5E),
+    onPrimaryContainer = Color(0xFF64B5FF),
+    secondary = Color(0xFF5E5CE6),
+    background = Color.Black,
+    onBackground = Color.White,
+    surface = Color(0xFF1C1C1E),
+    onSurface = Color.White,
+    surfaceVariant = Color(0xFF1C1C1E),
+    onSurfaceVariant = Color(0xFF8E8E93),
+    outline = Color(0xFF48484A),
+    outlineVariant = Color(0xFF38383A),
+    error = Color(0xFFFF453A)
+)
+
+private val IOSTypography = Typography(
+    displaySmall = androidx.compose.ui.text.TextStyle(
+        fontFamily = FontFamily.SansSerif,
+        fontWeight = FontWeight.Bold,
+        fontSize = 34.sp,
+        lineHeight = 40.sp,
+        letterSpacing = (-0.4).sp
+    ),
+    headlineLarge = androidx.compose.ui.text.TextStyle(
+        fontFamily = FontFamily.SansSerif,
+        fontWeight = FontWeight.Bold,
+        fontSize = 34.sp,
+        lineHeight = 40.sp,
+        letterSpacing = (-0.4).sp
+    ),
+    headlineMedium = androidx.compose.ui.text.TextStyle(
+        fontFamily = FontFamily.SansSerif,
+        fontWeight = FontWeight.Bold,
+        fontSize = 28.sp,
+        lineHeight = 34.sp
+    ),
+    headlineSmall = androidx.compose.ui.text.TextStyle(
+        fontFamily = FontFamily.SansSerif,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 22.sp,
+        lineHeight = 28.sp
+    ),
+    titleLarge = androidx.compose.ui.text.TextStyle(
+        fontFamily = FontFamily.SansSerif,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 20.sp,
+        lineHeight = 25.sp
+    ),
+    titleMedium = androidx.compose.ui.text.TextStyle(
+        fontFamily = FontFamily.SansSerif,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 17.sp,
+        lineHeight = 22.sp
+    ),
+    bodyLarge = androidx.compose.ui.text.TextStyle(
+        fontFamily = FontFamily.SansSerif,
+        fontWeight = FontWeight.Normal,
+        fontSize = 17.sp,
+        lineHeight = 22.sp
+    ),
+    bodyMedium = androidx.compose.ui.text.TextStyle(
+        fontFamily = FontFamily.SansSerif,
+        fontWeight = FontWeight.Normal,
+        fontSize = 15.sp,
+        lineHeight = 20.sp
+    ),
+    bodySmall = androidx.compose.ui.text.TextStyle(
+        fontFamily = FontFamily.SansSerif,
+        fontWeight = FontWeight.Normal,
+        fontSize = 13.sp,
+        lineHeight = 18.sp
+    ),
+    labelLarge = androidx.compose.ui.text.TextStyle(
+        fontFamily = FontFamily.SansSerif,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 15.sp,
+        lineHeight = 20.sp
+    ),
+    labelMedium = androidx.compose.ui.text.TextStyle(
+        fontFamily = FontFamily.SansSerif,
+        fontWeight = FontWeight.Normal,
+        fontSize = 13.sp,
+        lineHeight = 18.sp
+    ),
+    labelSmall = androidx.compose.ui.text.TextStyle(
+        fontFamily = FontFamily.SansSerif,
+        fontWeight = FontWeight.Normal,
+        fontSize = 12.sp,
+        lineHeight = 16.sp
+    )
 )
 
 @Composable
@@ -62,7 +152,7 @@ fun GlassMailTheme(themeMode: ThemeMode, content: @Composable () -> Unit) {
         ThemeMode.LIGHT -> false
         ThemeMode.DARK -> true
     }
-    val scheme = if (dark) DarkColors else LightColors
+    val colors = if (dark) DarkColors else LightColors
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
@@ -77,21 +167,15 @@ fun GlassMailTheme(themeMode: ThemeMode, content: @Composable () -> Unit) {
         }
     }
     MaterialTheme(
-        colorScheme = scheme,
-        typography = Typography(
-            displaySmall = MaterialTheme.typography.displaySmall.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold),
-            headlineLarge = MaterialTheme.typography.headlineLarge.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold),
-            titleLarge = MaterialTheme.typography.titleLarge.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold),
-            titleMedium = MaterialTheme.typography.titleMedium.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
-        ),
+        colorScheme = colors,
+        typography = IOSTypography,
         shapes = Shapes(
-            extraSmall = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-            small = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-            medium = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
-            large = androidx.compose.foundation.shape.RoundedCornerShape(26.dp),
-            extraLarge = androidx.compose.foundation.shape.RoundedCornerShape(34.dp)
+            extraSmall = RoundedCornerShape(8.dp),
+            small = RoundedCornerShape(10.dp),
+            medium = RoundedCornerShape(14.dp),
+            large = RoundedCornerShape(22.dp),
+            extraLarge = RoundedCornerShape(30.dp)
         ),
         content = content
     )
 }
-
